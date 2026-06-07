@@ -1,0 +1,119 @@
+local internet = require("internet")
+local fs = require("filesystem")
+local shell = require("shell")
+
+local args = {...}
+
+local githubFolder = args[1]
+local sourceDir = args[2]
+
+if not githubFolder or not sourceDir then
+    print("Usage: upload.lua <githubFolder> <directory>")
+    return
+end
+
+-- 🔐 PUT YOUR TOKEN HERE
+local TOKEN = "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"
+
+local USER = "volume75"
+local REPO = "OpenComputers"
+local BRANCH = "main"
+
+---------------------------------------------------
+-- Base64 (GitHub requires it)
+---------------------------------------------------
+local b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+local function base64(data)
+    return ((data:gsub('.', function(x)
+        local r,b='',x:byte()
+        for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+        return r
+    end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+        if (#x < 6) then return '' end
+        local c=0
+        for i=1,6 do
+            c=c + (x:sub(i,i)=='1' and 2^(6-i) or 0)
+        end
+        return b64chars:sub(c+1,c+1)
+    end)..({ '', '==', '=' })[#data%3+1])
+end
+
+---------------------------------------------------
+-- Read file
+---------------------------------------------------
+local function readFile(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local data = f:read("*a")
+    f:close()
+    return data
+end
+
+---------------------------------------------------
+-- Scan directory recursively
+---------------------------------------------------
+local function scan(dir, out)
+    out = out or {}
+    for file in fs.list(dir) do
+        local full = fs.concat(dir, file)
+        if fs.isDirectory(full) then
+            scan(full, out)
+        else
+            table.insert(out, full)
+        end
+    end
+    return out
+end
+
+---------------------------------------------------
+-- Upload file to GitHub
+---------------------------------------------------
+local function uploadFile(localPath, remotePath)
+    local data = readFile(localPath)
+    if not data then
+        print("Failed to read:", localPath)
+        return
+    end
+
+    local encoded = base64(data)
+
+    local url = "https://api.github.com/repos/" ..
+        USER .. "/" .. REPO ..
+        "/contents/" .. githubFolder .. "/" .. remotePath
+
+    local payload = {
+        message = "OC upload " .. remotePath,
+        content = encoded,
+        branch = BRANCH
+    }
+
+    local json = require("serialization").serialize(payload)
+
+    local headers = {
+        ["Authorization"] = "Bearer " .. TOKEN,
+        ["Content-Type"] = "application/json",
+        ["User-Agent"] = "OpenComputers"
+    }
+
+    local response = internet.request(url, json, headers, "PUT")
+
+    local result = ""
+    for chunk in response do
+        result = result .. chunk
+    end
+
+    print("Uploaded:", remotePath)
+end
+
+---------------------------------------------------
+-- MAIN
+---------------------------------------------------
+local files = scan(sourceDir)
+
+for _, file in ipairs(files) do
+    local relative = file:sub(#sourceDir + 2)
+    uploadFile(file, relative)
+end
+
+print("Done.")
