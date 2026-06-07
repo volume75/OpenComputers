@@ -13,7 +13,7 @@ if not githubFolder or not sourceDir then
 end
 
 -- 🔐 PUT YOUR TOKEN HERE
-local TOKEN = "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"
+local TOKEN = "Insert gitHub Token Here"
 
 local USER = "volume75"
 local REPO = "OpenComputers"
